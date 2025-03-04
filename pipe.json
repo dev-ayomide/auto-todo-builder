@@ -1,0 +1,13 @@
+{
+  "crons": [
+    {
+      "path": "/api/scan-todos",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/send-reminders",
+      "schedule": "*/5 * * * *"
+    }
+  ]
+}
+

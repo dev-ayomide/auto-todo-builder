@@ -1,4 +1,8 @@
 {
+  "name": "Auto-Todo Builder",
+  "description": "Automatically extract tasks and todos from your screen content",
+  "version": "1.0.0",
+  "author": "Taiwo Ayomide",
   "crons": [
     {
       "path": "/api/scan-todos",
@@ -8,6 +12,8 @@
       "path": "/api/send-reminders",
       "schedule": "*/5 * * * *"
     }
-  ]
+  ],
+  "permissions": ["ocr", "notifications"],
+  "tags": ["productivity", "task-management", "automation"]
 }
 

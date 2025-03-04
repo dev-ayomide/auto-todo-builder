@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Button } from "@/components/ui/button"
@@ -9,7 +9,6 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { ArrowUpDown, MoreHorizontal, ExternalLink, Clock, CheckCircle2, XCircle, RefreshCw } from "lucide-react"
 import { formatDistanceToNow } from "date-fns"
 import type { Todo } from "@/lib/types"
-import { updateTodoStatus } from "@/lib/actions/update-todo-status"
 import { toast } from "sonner"
 
 interface TodoTableProps {
@@ -20,6 +19,12 @@ interface TodoTableProps {
 export function TodoTable({ todos, refreshTodos }: TodoTableProps) {
   const [sortField, setSortField] = useState<keyof Todo>("createdAt")
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc")
+  const [localTodos, setLocalTodos] = useState<Todo[]>(todos)
+
+  // Update local todos when props change
+  useEffect(() => {
+    setLocalTodos(todos)
+  }, [todos])
 
   const handleSort = (field: keyof Todo) => {
     if (field === sortField) {
@@ -30,7 +35,7 @@ export function TodoTable({ todos, refreshTodos }: TodoTableProps) {
     }
   }
 
-  const sortedTodos = [...todos].sort((a, b) => {
+  const sortedTodos = [...localTodos].sort((a, b) => {
     if (sortField === "createdAt" || sortField === "dueDate") {
       const dateA = new Date(a[sortField] || 0).getTime()
       const dateB = new Date(b[sortField] || 0).getTime()
@@ -42,11 +47,22 @@ export function TodoTable({ todos, refreshTodos }: TodoTableProps) {
     return 0
   })
 
-  const handleStatusChange = async (todo: Todo, newStatus: "pending" | "completed" | "cancelled") => {
+  const handleStatusChange = (todo: Todo, newStatus: "pending" | "completed" | "cancelled") => {
     try {
-      await updateTodoStatus(todo.id, newStatus)
-      refreshTodos()
+      // Update the local state immediately for a responsive UI
+      const updatedTodos = localTodos.map((t) => (t.id === todo.id ? { ...t, status: newStatus } : t))
+      setLocalTodos(updatedTodos)
+
+      // Update localStorage directly
+      try {
+        localStorage.setItem("todos", JSON.stringify(updatedTodos))
+      } catch (e) {
+        console.error("Error updating localStorage:", e)
+      }
+
       toast.success(`Task marked as ${newStatus}`)
+
+      // No server action call - we're using client-side storage only
     } catch (error) {
       toast.error("Failed to update task status")
       console.error(error)
@@ -77,7 +93,7 @@ export function TodoTable({ todos, refreshTodos }: TodoTableProps) {
     }
   }
 
-  if (todos.length === 0) {
+  if (sortedTodos.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center p-8 bg-white dark:bg-slate-950 rounded-lg shadow">
         <p className="text-slate-600 dark:text-slate-400 mb-4">No tasks found with the current filters</p>

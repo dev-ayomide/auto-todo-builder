@@ -15,24 +15,37 @@ export function useTodoExtractor(settings: Settings | null) {
   const [error, setError] = useState<string | null>(null)
   const [lastScanTime, setLastScanTime] = useState<Date | null>(null)
 
-  // Add a timeout to prevent infinite loading
+  // Add a timeout to prevent infinite loading but don't use mock data
   useEffect(() => {
     if (!loading) return // Only set timeout if we're loading
 
     const loadingTimeout = setTimeout(() => {
-      console.log("Loading timeout reached, showing sample data")
+      console.log("Loading timeout reached")
       setLoading(false)
-
-      // If we're still loading after 10 seconds, show sample data
-      if (todos.length === 0) {
-        setTodos(getSampleTodos())
-        setSources(["Email", "Slack", "GitHub", "Browser"])
-        setError("Loading timed out. Showing sample data. Please check your Screenpipe connection.")
-      }
-    }, 10000) // 10 second timeout
+      setError("Loading timed out. Please check your Screenpipe connection and try again.")
+    }, 10000) // 10 second timeout (reduced from 15)
 
     return () => clearTimeout(loadingTimeout)
-  }, [loading, todos.length]) // Only depend on loading state and todos.length
+  }, [loading])
+
+  // Load todos from localStorage on initial load
+  useEffect(() => {
+    try {
+      const storedTodos = localStorage.getItem("todos")
+      if (storedTodos) {
+        const parsedTodos = JSON.parse(storedTodos)
+        if (parsedTodos.length > 0) {
+          setTodos(parsedTodos)
+
+          // Extract unique sources from stored todos
+          const storedSources = parsedTodos.map((todo) => todo.source)
+          setSources(Array.from(new Set(storedSources)))
+        }
+      }
+    } catch (e) {
+      console.error("Error loading todos from localStorage:", e)
+    }
+  }, [])
 
   const refreshTodos = useCallback(async () => {
     if (!settings) {
@@ -42,9 +55,7 @@ export function useTodoExtractor(settings: Settings | null) {
     }
 
     if (!isConnected) {
-      // If not connected, show sample data and exit loading state
-      setTodos(getSampleTodos())
-      setSources(["Email", "Slack", "GitHub", "Browser"])
+      // If not connected, show error and exit loading state
       setLoading(false)
       return
     }
@@ -63,13 +74,13 @@ export function useTodoExtractor(settings: Settings | null) {
       // If that works, proceed with the full query
       console.log("Fetching screen data...")
       const now = new Date()
-      const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000)
+      const thirtyMinutesAgo = new Date(now.getTime() - 30 * 60 * 1000) // 30 minutes instead of 15
 
       const results = await pipe.queryScreenpipe({
         contentType: "ocr",
-        startTime: oneHourAgo.toISOString(),
+        startTime: thirtyMinutesAgo.toISOString(),
         endTime: now.toISOString(),
-        limit: 50, // Reduced limit for better performance
+        limit: 30, // Increased from 15 to 30 for more data
         // Add position data to help filter out title bars and taskbars
         includePosition: true,
       })
@@ -81,29 +92,33 @@ export function useTodoExtractor(settings: Settings | null) {
 
       console.log("Extracted todos:", extractedTodos)
 
+      // Load todos from localStorage
+      let existingTodos = []
+      try {
+        const storedTodos = localStorage.getItem("todos")
+        if (storedTodos) {
+          existingTodos = JSON.parse(storedTodos)
+        }
+      } catch (e) {
+        console.error("Error loading todos from localStorage:", e)
+      }
+
       // Merge with existing todos, avoiding duplicates
-      setTodos((prevTodos) => {
-        // Create a map of existing todo titles for quick lookup
-        const existingTitles = new Map<string, boolean>()
-        prevTodos.forEach((todo) => {
-          existingTitles.set(todo.title.toLowerCase().trim(), true)
-        })
+      const updatedTodos = mergeAndDeduplicateTodos(existingTodos, extractedTodos)
 
-        // Filter out new todos that are duplicates of existing ones
-        const newUniqueTodos = extractedTodos.filter((todo) => {
-          const normalizedTitle = todo.title.toLowerCase().trim()
-          return !existingTitles.has(normalizedTitle)
-        })
+      // Update state
+      setTodos(updatedTodos)
 
-        // Combine existing and new unique todos
-        return [...prevTodos, ...newUniqueTodos]
-      })
+      // Save to localStorage
+      try {
+        localStorage.setItem("todos", JSON.stringify(updatedTodos))
+      } catch (e) {
+        console.error("Error saving todos to localStorage:", e)
+      }
 
-      // Extract unique sources - Fix this to not depend on the todos state variable
-      setSources((prevSources) => {
-        const newSources = extractedTodos.map((todo) => todo.source)
-        return Array.from(new Set([...prevSources, ...newSources]))
-      })
+      // Extract unique sources
+      const allSources = updatedTodos.map((todo) => todo.source)
+      setSources(Array.from(new Set(allSources)))
 
       setLastScanTime(now)
 
@@ -118,6 +133,13 @@ export function useTodoExtractor(settings: Settings | null) {
           })
         }
       }
+
+      // Show toast with number of tasks found
+      if (extractedTodos.length > 0) {
+        toast.success(`Found ${extractedTodos.length} new tasks`)
+      } else {
+        toast.info("No new tasks found")
+      }
     } catch (error) {
       console.error("Error fetching todos:", error)
 
@@ -129,16 +151,46 @@ export function useTodoExtractor(settings: Settings | null) {
       } else {
         setError("Failed to fetch todos. Please check your Screenpipe connection.")
       }
-
-      // If we can't connect to Screenpipe, provide some sample data
-      if (todos.length === 0) {
-        setTodos(getSampleTodos())
-        setSources(["Email", "Slack", "GitHub", "Browser"])
-      }
     } finally {
       setLoading(false)
     }
-  }, [settings, isConnected]) // Removed unnecessary todos dependency
+  }, [settings, isConnected])
+
+  // Helper function to merge and deduplicate todos
+  function mergeAndDeduplicateTodos(existingTodos: Todo[], newTodos: Todo[]): Todo[] {
+    // Create a map of existing todo titles for quick lookup
+    const existingTitlesMap = new Map<string, Todo>()
+
+    // Add existing todos to the map
+    existingTodos.forEach((todo) => {
+      existingTitlesMap.set(todo.title.toLowerCase().trim(), todo)
+    })
+
+    // Process new todos
+    newTodos.forEach((newTodo) => {
+      const normalizedTitle = newTodo.title.toLowerCase().trim()
+
+      // If this todo doesn't exist yet, add it
+      if (!existingTitlesMap.has(normalizedTitle)) {
+        existingTitlesMap.set(normalizedTitle, newTodo)
+      }
+      // If it exists but the existing one is completed/cancelled and the new one is pending,
+      // keep the existing status (don't revert completed tasks)
+      else {
+        const existingTodo = existingTitlesMap.get(normalizedTitle)!
+        if (existingTodo.status === "pending") {
+          // Update with new todo but keep the ID
+          existingTitlesMap.set(normalizedTitle, {
+            ...newTodo,
+            id: existingTodo.id,
+          })
+        }
+      }
+    })
+
+    // Convert map back to array
+    return Array.from(existingTitlesMap.values())
+  }
 
   // Initial load when Screenpipe is initialized
   useEffect(() => {
@@ -185,61 +237,5 @@ export function useTodoExtractor(settings: Settings | null) {
     lastScanTime,
     isConnected,
   }
-}
-
-// Sample todos function remains the same...
-function getSampleTodos() {
-  return [
-    {
-      id: "1",
-      title: "Update project documentation",
-      description: "Add installation instructions and update API reference",
-      priority: "high",
-      status: "pending",
-      source: "GitHub",
-      sourceUrl: "https://github.com/yourusername/yourproject",
-      createdAt: new Date().toISOString(),
-      dueDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(),
-    },
-    {
-      id: "2",
-      title: "Schedule meeting with design team",
-      description: "Discuss new UI components and design system",
-      priority: "medium",
-      status: "pending",
-      source: "Slack",
-      createdAt: new Date().toISOString(),
-      dueDate: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
-    },
-    {
-      id: "3",
-      title: "Review pull request #42",
-      description: "Code review for the new authentication feature",
-      priority: "high",
-      status: "pending",
-      source: "GitHub",
-      sourceUrl: "https://github.com/yourusername/yourproject/pull/42",
-      createdAt: new Date().toISOString(),
-    },
-    {
-      id: "4",
-      title: "Respond to client email about timeline",
-      description: "They asked about the project delivery date",
-      priority: "medium",
-      status: "completed",
-      source: "Email",
-      createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-      dueDate: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-    },
-    {
-      id: "5",
-      title: "Fix navigation bug on mobile",
-      description: "Menu doesn't close properly on iOS devices",
-      priority: "low",
-      status: "pending",
-      source: "Browser",
-      createdAt: new Date().toISOString(),
-    },
-  ]
 }
 

@@ -44,7 +44,7 @@ export function useScreenpipe() {
         setIsConnected(false)
         setError("Screenpipe initialization timed out. Please check if the service is running.")
       }
-    }, 5000) // 5 second timeout
+    }, 10000) // 10 second timeout (increased from 5 seconds)
 
     initializeScreenpipe()
 
@@ -64,7 +64,7 @@ export function useScreenpipe() {
       clearInterval(intervalId)
       clearTimeout(initTimeout)
     }
-  }, []) // Removed isInitialized from dependency array
+  }, [isInitialized]) // Added isInitialized to dependency array
 
   function getErrorMessage(error: any): string {
     if (error.message?.includes("Failed to fetch")) {
@@ -76,7 +76,7 @@ export function useScreenpipe() {
     if (error.status === 400) {
       return "Invalid request to Screenpipe. Please check your query parameters."
     }
-    return error.message || "An unknown error occurred while connecting to Screenpipe."
+    return "Unable to connect to Screenpipe. Please make sure the desktop app is running."
   }
 
   return {

@@ -1,4 +1,4 @@
-Auto-Todo Builder
+## Auto-Todo Builder
 
 Auto-Todo Builder is an intelligent task extraction tool that automatically scans your screen for potential tasks and todos from various sources like emails, chat messages, browser content, and more. It compiles these tasks into a dynamic dashboard and can send you reminders to help you stay organized.
 
@@ -14,14 +14,14 @@ Task Management: Mark tasks as completed, pending, or cancelled
 Filtering: Filter tasks by source, priority, and status
 Statistics Dashboard: View completion rates and task distribution
 
-Installation
+## Installation
 Prerequisites
 
     Node.js 16.x or higher
     Next.js 13.x or higher
     Screenpipe desktop application installed and running
 
-Setup
+## Setup
 
 Clone the repository:
 
@@ -125,9 +125,6 @@ Auto-Todo Builder can use the Groq API for enhanced task extraction. To enable t
 3. Restart the application
 
 
-## License
-
-[MIT](LICENSE)
 
 ## Acknowledgements
 

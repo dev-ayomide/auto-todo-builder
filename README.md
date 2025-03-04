@@ -51,6 +51,11 @@ npm run dev
 
 5. Open [http://localhost:3000](http://localhost:3000) in your browser
 
+Video Link
+https://www.loom.com/share/b0df1b81703f487bbe896e1ec345f221?sid=87476f04-ca88-4934-8433-43dec49ac938
+
+
+![Screenshot 2025-03-03 200142](https://github.com/user-attachments/assets/4d0e3f1f-487d-41fe-8fd5-5258e83ca57c)
 
 ## Usage
 

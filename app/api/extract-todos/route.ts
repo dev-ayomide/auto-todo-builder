@@ -1,35 +1,33 @@
-import { NextResponse } from "next/server"
-import { groq } from "@ai-sdk/groq"
-import { generateText } from "ai"
+import { NextResponse } from "next/server";
+import { createGroq } from "@ai-sdk/groq";
+import { generateText } from "ai";
+
+// Initialize Groq client
+const groq = createGroq({
+  apiKey: process.env.NEXT_PUBLIC_GROQ_API_KEY,
+});
 
 export async function POST(req: Request) {
   try {
-    const { text, source, priorityKeywords } = await req.json()
+    const { text, source, priorityKeywords } = await req.json();
 
-    // Use server-side environment variable (not prefixed with NEXT_PUBLIC_)
-    const groqApiKey = process.env.GROQ_API_KEY
+    if (!process.env.NEXT_PUBLIC_GROQ_API_KEY) {
+      console.warn("NEXT_PUBLIC_GROQ_API_KEY is not set in server environment variables");
 
-    if (!groqApiKey) {
-      console.warn("GROQ_API_KEY is not set in server environment variables")
-
-      // Instead of returning an error, use a fallback extraction method
-      const fallbackTodos = extractTodosWithRegex(text, priorityKeywords)
+      // Use fallback extraction method
+      const fallbackTodos = extractTodosWithRegex(text, priorityKeywords);
 
       return NextResponse.json({
         success: true,
         data: fallbackTodos,
         method: "fallback",
-      })
+      });
     }
 
     try {
-      // Create a Groq client with explicit API key
-      const groqClient = groq({
-        apiKey: groqApiKey,
-      })
-
+      // Use the Groq client to specify the model
       const { text: extractedText } = await generateText({
-        model: groqClient("llama3-70b-8192"),
+        model: groq("llama3-70b-8192"),
         prompt: `Extract potential tasks or todos from the following text. 
         Return a JSON array of objects with title, description, priority, and dueDate fields.
         For priority, use "high", "medium", or "low" based on urgency words.
@@ -41,44 +39,44 @@ export async function POST(req: Request) {
         
         Text from ${source}:
         ${text}`,
-      })
+      });
 
       try {
         // Parse the JSON response
-        const extractedTodos = JSON.parse(extractedText)
+        const extractedTodos = JSON.parse(extractedText);
         return NextResponse.json({
           success: true,
           data: extractedTodos,
           method: "ai",
-        })
+        });
       } catch (error) {
-        console.error("Error parsing Groq response:", error)
+        console.error("Error parsing Groq response:", error);
 
-        // If parsing fails, use fallback extraction
-        const fallbackTodos = extractTodosWithRegex(text, priorityKeywords)
+        // Use fallback extraction if parsing fails
+        const fallbackTodos = extractTodosWithRegex(text, priorityKeywords);
 
         return NextResponse.json({
           success: true,
           data: fallbackTodos,
           method: "fallback",
           parseError: true,
-        })
+        });
       }
     } catch (error) {
-      console.error("Error with Groq API:", error)
+      console.error("Error with Groq API:", error);
 
-      // If Groq API fails, use fallback extraction
-      const fallbackTodos = extractTodosWithRegex(text, priorityKeywords)
+      // Use fallback extraction if Groq API fails
+      const fallbackTodos = extractTodosWithRegex(text, priorityKeywords);
 
       return NextResponse.json({
         success: true,
         data: fallbackTodos,
         method: "fallback",
         apiError: true,
-      })
+      });
     }
   } catch (error) {
-    console.error("Error in extract-todos:", error)
+    console.error("Error in extract-todos:", error);
     return NextResponse.json(
       {
         success: false,
@@ -86,18 +84,18 @@ export async function POST(req: Request) {
         message: error.message,
       },
       { status: 500 },
-    )
+    );
   }
 }
 
 // Fallback extraction method using regex patterns
 function extractTodosWithRegex(text: string, priorityKeywords: { high: string; medium: string; low: string }) {
-  const todos = []
+  const todos = [];
 
   // Convert priority keywords to arrays
-  const highKeywords = priorityKeywords.high.split(",").map((k) => k.trim().toLowerCase())
-  const mediumKeywords = priorityKeywords.medium.split(",").map((k) => k.trim().toLowerCase())
-  const lowKeywords = priorityKeywords.low.split(",").map((k) => k.trim().toLowerCase())
+  const highKeywords = priorityKeywords.high.split(",").map((k) => k.trim().toLowerCase());
+  const mediumKeywords = priorityKeywords.medium.split(",").map((k) => k.trim().toLowerCase());
+  const lowKeywords = priorityKeywords.low.split(",").map((k) => k.trim().toLowerCase());
 
   // Task detection patterns
   const taskPatterns = [
@@ -106,32 +104,32 @@ function extractTodosWithRegex(text: string, priorityKeywords: { high: string; m
     /(?:need to|should|must|have to)\s+(.+?)(?:\.|$)/i,
     /(?:don't forget to|remember to)\s+(.+?)(?:\.|$)/i,
     /(?:assigned to you|your task):\s*(.+?)(?:\.|$)/i,
-  ]
+  ];
 
-  const textLower = text.toLowerCase()
+  const textLower = text.toLowerCase();
 
   // Check each pattern
   for (const pattern of taskPatterns) {
-    const matches = textLower.match(pattern)
+    const matches = textLower.match(pattern);
     if (matches && matches[1]) {
-      const taskTitle = matches[1].trim()
+      const taskTitle = matches[1].trim();
 
       // Determine priority based on keywords
-      let priority = "medium"
+      let priority = "medium";
       if (highKeywords.some((keyword) => textLower.includes(keyword))) {
-        priority = "high"
+        priority = "high";
       } else if (lowKeywords.some((keyword) => textLower.includes(keyword))) {
-        priority = "low"
+        priority = "low";
       }
 
       // Extract potential due date
-      let dueDate = null
+      let dueDate = null;
       const dueDateMatch = textLower.match(
         /(?:due|by|before|deadline):\s*(\d{1,2}\/\d{1,2}\/\d{2,4}|\d{1,2}-\d{1,2}-\d{2,4})/i,
-      )
+      );
       if (dueDateMatch && dueDateMatch[1]) {
         try {
-          dueDate = new Date(dueDateMatch[1]).toISOString()
+          dueDate = new Date(dueDateMatch[1]).toISOString();
         } catch (e) {
           // Invalid date format, ignore
         }
@@ -142,10 +140,9 @@ function extractTodosWithRegex(text: string, priorityKeywords: { high: string; m
         description: text.substring(0, 200),
         priority,
         dueDate,
-      })
+      });
     }
   }
 
-  return todos
+  return todos;
 }
-
